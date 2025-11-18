@@ -1,55 +1,317 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collatz Racing</title>
+    <title>Collatz Challenge</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(59, 130, 246, 0.8); }
         }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            text-align: center;
+        .pulse-glow {
+            animation: pulse-glow 2s ease-in-out infinite;
         }
-        h1 {
-            color: #667eea;
-            margin-bottom: 30px;
-            font-size: 2.5em;
+        @keyframes slide-in {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
-        button {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            margin: 10px;
-            border-radius: 8px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
+        .slide-in {
+            animation: slide-in 0.5s ease-out;
         }
-        button:hover {
-            background: #764ba2;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+        @keyframes fade-out {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        .fade-out {
+            animation: fade-out 0.5s ease-out forwards;
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>Collatz Racing</h1>
-        <button onclick="alert('Button 1 clicked!')">Button 1</button>
-        <button onclick="alert('Button 2 clicked!')">Button 2</button>
-        <button onclick="alert('Button 3 clicked!')">Button 3</button>
+<body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
+    <div class="container mx-auto px-4 py-8 max-w-4xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Collatz Speed Challenge
+            </h1>
+            <p class="text-gray-300 text-lg">Calculate the sequence perfectly - one mistake and you lose!</p>
+        </div>
+
+```
+    <!-- Start Screen -->
+    <div id="startScreen" class="bg-white/10 backdrop-blur-md rounded-2xl p-8 text-center border border-white/20">
+        <div class="mb-6">
+            <div class="text-6xl mb-4">⚡</div>
+            <h2 class="text-3xl font-bold mb-4">Ready for the Challenge?</h2>
+            <p class="text-gray-300 mb-2">Calculate the Collatz sequence as fast as you can</p>
+            <p class="text-red-400 font-bold mb-6">⚠️ One wrong answer = Game Over!</p>
+            <div class="bg-white/5 rounded-lg p-4 mb-6 max-w-md mx-auto">
+                <p class="text-sm text-gray-300 mb-2 font-semibold">Collatz Rules:</p>
+                <p class="text-sm text-blue-300">• If EVEN: divide by 2</p>
+                <p class="text-sm text-purple-300">• If ODD: multiply by 3, then add 1</p>
+                <p class="text-sm text-green-300 mt-2">• Goal: Reach 1</p>
+            </div>
+        </div>
+        <button onclick="startGame()" 
+            class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-4 px-8 rounded-lg transition-all transform hover:scale-105 pulse-glow text-xl">
+            Start Challenge!
+        </button>
     </div>
+
+    <!-- Game Screen -->
+    <div id="gameScreen" class="hidden space-y-6">
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-3 gap-4">
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 text-center border border-white/20">
+                <p class="text-sm text-gray-400 mb-1">Starting Number</p>
+                <p class="text-3xl font-bold text-yellow-400" id="startingNum"></p>
+            </div>
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 text-center border border-white/20">
+                <p class="text-sm text-gray-400 mb-1">Steps Taken</p>
+                <p class="text-3xl font-bold text-blue-400" id="stepCount">0</p>
+            </div>
+            <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 text-center border border-white/20">
+                <p class="text-sm text-gray-400 mb-1">Time</p>
+                <p class="text-3xl font-bold text-purple-400" id="timer">0.0s</p>
+            </div>
+        </div>
+
+        <!-- Current Number Display -->
+        <div class="bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-md rounded-2xl p-8 text-center border-2 border-blue-500/50">
+            <p class="text-sm text-gray-300 mb-3">Current Number</p>
+            <div class="text-7xl font-bold text-white mb-4" id="currentNumber"></div>
+            <div class="bg-white/5 rounded-lg h-6 overflow-hidden max-w-md mx-auto">
+                <div id="progressBar" class="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p class="text-sm text-gray-400 mt-2">Progress to 1</p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20">
+            <label class="block text-center text-lg font-semibold mb-4 text-gray-300">
+                What's the next number?
+            </label>
+            <div class="flex gap-3">
+                <input type="number" id="answerInput" 
+                    class="flex-1 px-6 py-4 bg-white/20 border-2 border-blue-500/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white text-3xl text-center font-bold placeholder-gray-400"
+                    placeholder="?"
+                    autofocus>
+                <button onclick="submitAnswer()" 
+                    class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-4 px-8 rounded-lg transition-all transform hover:scale-105 text-xl">
+                    Submit
+                </button>
+            </div>
+            <div id="feedback" class="mt-4 text-center text-lg font-semibold h-8"></div>
+        </div>
+
+        <!-- Sequence History -->
+        <div class="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+            <h3 class="text-lg font-semibold mb-3 text-gray-300">Sequence History</h3>
+            <div id="sequenceHistory" class="flex flex-wrap gap-2"></div>
+        </div>
+    </div>
+
+    <!-- Result Screen -->
+    <div id="resultScreen" class="hidden bg-white/10 backdrop-blur-md rounded-2xl p-8 text-center border border-white/20 slide-in">
+        <div class="text-8xl mb-6" id="resultEmoji"></div>
+        <h2 class="text-4xl font-bold mb-4" id="resultTitle"></h2>
+        <div class="bg-white/5 rounded-lg p-6 mb-6 max-w-md mx-auto">
+            <div class="grid grid-cols-2 gap-4 text-left">
+                <div>
+                    <p class="text-sm text-gray-400">Total Steps</p>
+                    <p class="text-2xl font-bold text-blue-400" id="finalSteps"></p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-400">Time</p>
+                    <p class="text-2xl font-bold text-purple-400" id="finalTime"></p>
+                </div>
+            </div>
+            <div class="mt-4" id="failureReason"></div>
+        </div>
+        <button onclick="startGame()" 
+            class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105">
+            Try Again!
+        </button>
+    </div>
+</div>
+
+<script>
+    let currentNum, startingNumber, totalSteps, stepCount;
+    let startTime, timerInterval;
+    let sequence = [];
+
+    function collatzStep(n) {
+        if (n % 2 === 0) {
+            return n / 2;
+        } else {
+            return 3 * n + 1;
+        }
+    }
+
+    function getTotalSteps(n) {
+        let temp = n;
+        let count = 0;
+        while (temp !== 1) {
+            temp = collatzStep(temp);
+            count++;
+        }
+        return count;
+    }
+
+    function generateStartingNumber() {
+        while (true) {
+            let num = Math.floor(Math.random() * 100) + 10;
+            let steps = getTotalSteps(num);
+            if (steps >= 5 && steps <= 20) {
+                return num;
+            }
+        }
+    }
+
+    function startGame() {
+        // Generate starting number
+        startingNumber = generateStartingNumber();
+        currentNum = startingNumber;
+        totalSteps = getTotalSteps(startingNumber);
+        stepCount = 0;
+        sequence = [startingNumber];
+        
+        // Update UI
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('resultScreen').classList.add('hidden');
+        document.getElementById('gameScreen').classList.remove('hidden');
+        
+        document.getElementById('startingNum').textContent = startingNumber;
+        document.getElementById('currentNumber').textContent = currentNum;
+        document.getElementById('stepCount').textContent = stepCount;
+        document.getElementById('answerInput').value = '';
+        document.getElementById('answerInput').disabled = false;
+        document.getElementById('feedback').textContent = '';
+        document.getElementById('progressBar').style.width = '0%';
+        
+        updateSequenceHistory();
+        
+        // Start timer
+        startTime = Date.now();
+        timerInterval = setInterval(updateTimer, 100);
+        
+        // Focus input
+        setTimeout(() => document.getElementById('answerInput').focus(), 100);
+    }
+
+    function updateTimer() {
+        const elapsed = (Date.now() - startTime) / 1000;
+        document.getElementById('timer').textContent = elapsed.toFixed(1) + 's';
+    }
+
+    function updateSequenceHistory() {
+        const historyDiv = document.getElementById('sequenceHistory');
+        historyDiv.innerHTML = sequence.map((num, idx) => 
+            `<span class="px-3 py-1 bg-white/20 rounded-lg text-sm ${idx === sequence.length - 1 ? 'ring-2 ring-blue-500' : ''}">${num}</span>`
+        ).join('');
+    }
+
+    function submitAnswer() {
+        const input = document.getElementById('answerInput');
+        const answer = parseInt(input.value);
+        const correct = collatzStep(currentNum);
+        const feedback = document.getElementById('feedback');
+        
+        if (isNaN(answer)) {
+            feedback.textContent = '⚠️ Enter a number!';
+            feedback.className = 'mt-4 text-center text-lg font-semibold h-8 text-yellow-400';
+            return;
+        }
+        
+        if (answer !== correct) {
+            // WRONG ANSWER - GAME OVER!
+            clearInterval(timerInterval);
+            document.getElementById('answerInput').disabled = true;
+            
+            feedback.textContent = `✗ WRONG! (${currentNum} → ${correct})`;
+            feedback.className = 'mt-4 text-center text-lg font-semibold h-8 text-red-400';
+            
+            const gameScreen = document.getElementById('gameScreen');
+            gameScreen.classList.add('shake');
+            
+            setTimeout(() => {
+                showResult(false, answer, correct);
+            }, 1000);
+            return;
+        }
+        
+        // CORRECT!
+        currentNum = answer;
+        stepCount++;
+        sequence.push(currentNum);
+        
+        document.getElementById('currentNumber').textContent = currentNum;
+        document.getElementById('stepCount').textContent = stepCount;
+        document.getElementById('progressBar').style.width = (stepCount / totalSteps * 100) + '%';
+        
+        feedback.textContent = '✓ Correct!';
+        feedback.className = 'mt-4 text-center text-lg font-semibold h-8 text-green-400';
+        
+        updateSequenceHistory();
+        input.value = '';
+        
+        // Check if reached 1
+        if (currentNum === 1) {
+            clearInterval(timerInterval);
+            setTimeout(() => {
+                showResult(true);
+            }, 500);
+            return;
+        }
+        
+        input.focus();
+    }
+
+    function showResult(success, wrongAnswer, correctAnswer) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        
+        document.getElementById('gameScreen').classList.add('hidden');
+        document.getElementById('resultScreen').classList.remove('hidden');
+        
+        document.getElementById('finalSteps').textContent = stepCount;
+        document.getElementById('finalTime').textContent = elapsed + 's';
+        
+        if (success) {
+            document.getElementById('resultEmoji').textContent = '🎉';
+            document.getElementById('resultTitle').textContent = 'Perfect!';
+            document.getElementById('failureReason').innerHTML = 
+                `<p class="text-green-400 font-semibold">You completed the sequence with no mistakes!</p>`;
+        } else {
+            document.getElementById('resultEmoji').textContent = '💥';
+            document.getElementById('resultTitle').textContent = 'Game Over!';
+            document.getElementById('failureReason').innerHTML = 
+                `<div class="mt-4 p-4 bg-red-500/20 rounded-lg border border-red-500/50">
+                    <p class="text-red-400 font-semibold mb-2">Wrong Answer!</p>
+                    <p class="text-gray-300 text-sm">You entered <span class="text-red-400 font-bold">${wrongAnswer}</span></p>
+                    <p class="text-gray-300 text-sm">Correct answer was <span class="text-green-400 font-bold">${correctAnswer}</span></p>
+                </div>`;
+        }
+    }
+
+    // Allow Enter key to submit
+    document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('answerInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitAnswer();
+        });
+    });
+</script>
+```
+
 </body>
 </html>
