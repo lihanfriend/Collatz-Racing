@@ -145,7 +145,32 @@
         </button>
     </div>
 </div>
+    
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
 
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyB9oK73wo05B6YHViDTUsh2gT-04G4FpP8",
+    authDomain: "collatz-racing.firebaseapp.com",
+    databaseURL: "https://collatz-racing-default-rtdb.firebaseio.com",
+    projectId: "collatz-racing",
+    storageBucket: "collatz-racing.firebasestorage.app",
+    messagingSenderId: "78351409018",
+    appId: "1:78351409018:web:ff8ecfd3e6018f896dc0c3",
+    measurementId: "G-5J0FS12HGE"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
+    
 <script>
     let currentNum, startingNumber, totalSteps, stepCount;
     let startTime, timerInterval;
