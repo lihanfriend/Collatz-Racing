@@ -1,7 +1,7 @@
 // index.js (module) - Collatz Duel with Firebase Auth + RTDB + Glicko-2
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, get, remove } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+import { getDatabase, ref, set, push, onValue, update, get, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
 
 // -------------------------
 // Firebase config & init
@@ -221,7 +221,15 @@ async function initializeUserRating(uid) {
             rating: 1500,
             rd: 350,
             vol: 0.06,
-            games: 0
+            games: 0,
+            email: currentUser.email || 'no-email@example.com',
+            displayName: currentUser.displayName || 'Anonymous'
+        });
+    } else {
+        // Update email and displayName if they've changed
+        await update(userRef, {
+            email: currentUser.email || 'no-email@example.com',
+            displayName: currentUser.displayName || 'Anonymous'
         });
     }
 }
@@ -382,6 +390,7 @@ $('createDuelBtn').addEventListener('click', async () => {
         player1: {
             uid: currentUser.uid,
             displayName: currentUser.displayName || 'Anonymous',
+            email: currentUser.email || 'no-email@example.com',
             currentNumber: startNumber,
             steps: 0,
             finished: false
@@ -390,6 +399,14 @@ $('createDuelBtn').addEventListener('click', async () => {
 
     try {
         await set(duelRef, payload);
+        
+        // Set up auto-delete if creator disconnects while duel is pending
+        const duelStatusRef = ref(db, `duels/${duelID}/status`);
+        const statusSnap = await get(duelStatusRef);
+        if (statusSnap.exists() && statusSnap.val() === 'pending') {
+            onDisconnect(duelRef).remove();
+        }
+        
         $('duelStatus').textContent = `Duel created! ID: ${duelID}. Waiting for opponent...`;
         gameStarted = false;
         ratingUpdated = false;
@@ -430,6 +447,7 @@ $('joinDuelBtn').addEventListener('click', async () => {
             await set(player2Ref, {
                 uid: currentUser.uid,
                 displayName: currentUser.displayName || 'Anonymous',
+                email: currentUser.email || 'no-email@example.com',
                 currentNumber: startNumber,
                 steps: 0,
                 finished: false
@@ -453,18 +471,77 @@ $('joinDuelBtn').addEventListener('click', async () => {
 });
 
 // -------------------------
+// Setup disconnect forfeit for active games
+// -------------------------
+async function setupDisconnectForfeit() {
+    if(!duelRef || !currentUser) return;
+    
+    const playerKey = await getPlayerKey();
+    if(!playerKey) return;
+    
+    // Mark player as disconnected and finished (forfeited) on disconnect
+    const playerRef = ref(db, `duels/${duelID}/${playerKey}`);
+    onDisconnect(playerRef).update({
+        finished: true,
+        disconnected: true,
+        forfeit: true
+    });
+}
+
+// -------------------------
+// Cancel disconnect forfeit (when returning to lobby normally)
+// -------------------------
+async function cancelDisconnectForfeit() {
+    if(!duelRef || !currentUser) return;
+    
+    const playerKey = await getPlayerKey();
+    if(!playerKey) return;
+    
+    const playerRef = ref(db, `duels/${duelID}/${playerKey}`);
+    onDisconnect(playerRef).cancel();
+}
+
+// -------------------------
 // Listen for duel updates
 // -------------------------
 function listenDuel(){
     if(!duelRef) return;
     onValue(duelRef, snapshot => {
         const data = snapshot.val();
-        if(!data) return;
+        
+        // If duel was deleted (creator disconnected), return to lobby
+        if(!data) {
+            if(gameStarted) {
+                // Game was in progress, just clean up
+                gameScreen.classList.add('hidden');
+                duelLobby.classList.remove('hidden');
+                clearInterval(timerInterval);
+                $('duelStatus').textContent = '';
+            } else if(duelID) {
+                // Was waiting in lobby, show message
+                alert('The duel was cancelled because the creator left.');
+                $('duelStatus').textContent = '';
+            }
+            duelID = null;
+            duelRef = null;
+            gameStarted = false;
+            ratingUpdated = false;
+            return;
+        }
 
         if(data.status === 'active' && !gameStarted){
             gameStarted = true;
             startNumber = data.startNumber;
             clearCreateCooldown(); // Clear cooldown when duel starts
+            
+            // Cancel the auto-delete since game is now active
+            if(duelRef) {
+                onDisconnect(duelRef).cancel();
+            }
+            
+            // Set up disconnect forfeit for active games
+            setupDisconnectForfeit();
+            
             startGame();
         }
 
@@ -531,14 +608,18 @@ async function updateRatings(duelData) {
         rating: p1Glicko.rating,
         rd: p1Glicko.rd,
         vol: p1Glicko.vol,
-        games: p1Data.games + 1
+        games: p1Data.games + 1,
+        email: duelData.player1.email || 'no-email@example.com',
+        displayName: p1.displayName
     });
 
     await set(ref(db, `users/${p2.uid}/rating`), {
         rating: p2Glicko.rating,
         rd: p2Glicko.rd,
         vol: p2Glicko.vol,
-        games: p2Data.games + 1
+        games: p2Data.games + 1,
+        email: duelData.player2.email || 'no-email@example.com',
+        displayName: p2.displayName
     });
 
     // Update display
@@ -666,6 +747,10 @@ function determineWinner(duelData){
     const p2 = duelData.player2;
     if(!p1 || !p2) return null;
 
+    // Check for disconnections/forfeits first
+    if(p1.disconnected || p1.forfeit) return p2.displayName;
+    if(p2.disconnected || p2.forfeit) return p1.displayName;
+
     if(p1.currentNumber === 1 && p2.currentNumber !== 1) return p1.displayName;
     if(p2.currentNumber === 1 && p1.currentNumber !== 1) return p2.displayName;
     
@@ -689,10 +774,33 @@ function determineWinner(duelData){
 async function showResult(winner, duelData){
     gameScreen.classList.add('hidden');
     resultScreen.classList.remove('hidden');
+    
+    // Check if this was a forfeit/disconnect
+    const p1 = duelData.player1;
+    const p2 = duelData.player2;
+    let forfeitMessage = '';
+    
+    if(p1.disconnected || p1.forfeit) {
+        forfeitMessage = `${p1.displayName} disconnected and forfeited!`;
+    } else if(p2.disconnected || p2.forfeit) {
+        forfeitMessage = `${p2.displayName} disconnected and forfeited!`;
+    }
+    
     $('resultTitle').textContent = winner ? `Winner: ${winner}` : 'Draw!';
     $('resultEmoji').textContent = winner ? '🏆' : '🤝';
     $('finalSteps').textContent = stepCount;
     $('finalTime').textContent = ((Date.now() - startTime) / 1000).toFixed(1) + 's';
+    
+    // Show forfeit message if applicable
+    if(forfeitMessage) {
+        const forfeitDiv = document.createElement('p');
+        forfeitDiv.className = 'text-red-400 text-sm mb-2';
+        forfeitDiv.textContent = forfeitMessage;
+        const existingForfeit = resultScreen.querySelector('.forfeit-message');
+        if(existingForfeit) existingForfeit.remove();
+        forfeitDiv.classList.add('forfeit-message');
+        resultScreen.querySelector('h2').after(forfeitDiv);
+    }
     
     // Show rating changes
     if(currentUser) {
@@ -731,6 +839,9 @@ $('returnLobbyBtn').addEventListener('click', async () => {
     
     // Clear the join code input
     $('duelIDInput').value = '';
+    
+    // Cancel disconnect forfeit before deleting
+    await cancelDisconnectForfeit();
     
     // Delete the duel from database
     if(duelRef) {
