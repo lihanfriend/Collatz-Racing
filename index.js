@@ -191,12 +191,13 @@ onAuthStateChanged(auth, (user) => {
         initializeUserRating(user.uid);
         // Display user rating
         displayUserRating(user.uid);
-        $('userInfo').textContent = `Signed in as: ${user.displayName || 'Anonymous'}`;
-        $('userInfo').classList.remove('hidden');
+        const userInfo2 = document.getElementById('userInfo2');
+        if(userInfo2) {
+            userInfo2.textContent = `Signed in as: ${user.displayName || 'Anonymous'}`;
+        }
     } else {
         loginScreen.classList.remove('hidden');
         duelLobby.classList.add('hidden');
-        $('userInfo').classList.add('hidden');
     }
 });
 
@@ -232,7 +233,8 @@ async function displayUserRating(uid) {
         const existing = document.getElementById('ratingDisplay');
         if (existing) existing.remove();
         
-        $('userInfo').parentElement.appendChild(ratingDisplay);
+        // Add to duel lobby instead of login screen
+        duelLobby.appendChild(ratingDisplay);
     }
 }
 
