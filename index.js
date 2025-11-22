@@ -33,6 +33,7 @@ let opponentData = { currentNumber: null, steps: 0 };
 let timerInterval = null, startTime = 0;
 let sequence = [];
 let duelRef = null;
+let gameStarted = false; // Track if game has started locally
 
 // -------------------------
 // DOM refs
@@ -79,6 +80,7 @@ $('logoutBtn').addEventListener('click', async () => {
         duelID = null;
         duelRef = null;
         startNumber = null;
+        gameStarted = false;
         $('duelStatus').textContent = '';
     } catch (err) {
         console.error("Sign-out error:", err);
@@ -124,6 +126,7 @@ $('createDuelBtn').addEventListener('click', async () => {
     try {
         await set(duelRef, payload);
         $('duelStatus').textContent = `Duel created! ID: ${duelID}. Waiting for opponent...`;
+        gameStarted = false; // Reset game started flag
         listenDuel();
     } catch (err) {
         console.error("Error creating duel:", err);
@@ -157,6 +160,7 @@ $('joinDuelBtn').addEventListener('click', async () => {
             const statusRef = ref(db, `duels/${duelID}/status`);
             await set(statusRef, 'active');
             $('duelStatus').textContent = `Joined duel ${duelID}. Game starting!`;
+            gameStarted = false; // Reset game started flag
             listenDuel();
             startGame(); // start locally for the joining player
         } else if(data.status === 'active'){
@@ -178,6 +182,13 @@ function listenDuel(){
     onValue(duelRef, snapshot => {
         const data = snapshot.val();
         if(!data) return;
+
+        // Check if status changed to 'active' and game hasn't started yet
+        if(data.status === 'active' && !gameStarted){
+            gameStarted = true;
+            startNumber = data.startNumber;
+            startGame();
+        }
 
         // determine which player is opponent
         let opponentKey = 'player2';
@@ -315,6 +326,7 @@ function showResult(winner, duelData){
 $('returnLobbyBtn').addEventListener('click', () => {
     resultScreen.classList.add('hidden');
     duelLobby.classList.remove('hidden');
+    gameStarted = false; // Reset for next game
     // optional: cleanup duel record (if you want)
 });
 
