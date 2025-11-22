@@ -573,7 +573,7 @@ function listenDuel(){
         if(data.player1 && data.player2 && (data.player1.finished || data.player2.finished)){
             if(!ratingUpdated) {
                 console.log("Both players present, at least one finished. Updating ratings...");
-                updateRatings(data).then(() => {
+                updateMyRating(data).then(() => {
                     ratingUpdated = true;
                     gameFinishedNormally = true;
                 });
@@ -585,7 +585,80 @@ function listenDuel(){
 }
 
 // -------------------------
-// Update ratings using Glicko-2
+// Update my own rating (called by each player independently)
+// -------------------------
+async function updateMyRating(duelData) {
+    if(!currentUser) return;
+    
+    const p1 = duelData.player1;
+    const p2 = duelData.player2;
+    if(!p1 || !p2) {
+        console.error("Missing player data for rating update");
+        return;
+    }
+
+    // Determine which player I am
+    const isPlayer1 = p1.uid === currentUser.uid;
+    const myData = isPlayer1 ? p1 : p2;
+    const opponentData = isPlayer1 ? p2 : p1;
+
+    console.log("Starting rating update for:", myData.displayName, "vs", opponentData.displayName);
+
+    // Fetch both players' ratings
+    const myRatingSnap = await get(ref(db, `users/${myData.uid}/rating`));
+    const opponentRatingSnap = await get(ref(db, `users/${opponentData.uid}/rating`));
+
+    const myRatingData = myRatingSnap.val() || { rating: 1500, rd: 350, vol: 0.06, games: 0 };
+    const opponentRatingData = opponentRatingSnap.val() || { rating: 1500, rd: 350, vol: 0.06, games: 0 };
+
+    console.log("My rating before:", myRatingData);
+    console.log("Opponent rating before:", opponentRatingData);
+
+    // Create Glicko-2 object for myself
+    const myGlicko = new Glicko2(myRatingData.rating, myRatingData.rd, myRatingData.vol);
+
+    // Determine outcome (1 = win, 0 = loss, 0.5 = draw)
+    const winner = determineWinner(duelData);
+    console.log("Winner determined:", winner);
+    
+    let myScore = 0.5;
+    if(winner === myData.displayName) {
+        myScore = 1;
+    } else if(winner === opponentData.displayName) {
+        myScore = 0;
+    }
+
+    console.log("My score:", myScore);
+
+    // Update my rating
+    myGlicko.update(opponentRatingData.rating, opponentRatingData.rd, myScore);
+
+    console.log("My rating after:", myGlicko.rating, "games:", myRatingData.games + 1);
+
+    // Save my rating to Firebase
+    try {
+        await set(ref(db, `users/${myData.uid}/rating`), {
+            rating: myGlicko.rating,
+            rd: myGlicko.rd,
+            vol: myGlicko.vol,
+            games: myRatingData.games + 1,
+            email: myData.email || 'no-email@example.com',
+            displayName: myData.displayName
+        });
+        
+        console.log("My rating saved to Firebase successfully");
+    } catch(err) {
+        console.error("Error saving my rating:", err);
+    }
+
+    // Update display for current user
+    if(currentUser) {
+        await displayUserRating(currentUser.uid);
+    }
+}
+
+// -------------------------
+// Update ratings using Glicko-2 (OLD - KEPT FOR REFERENCE)
 // -------------------------
 async function updateRatings(duelData) {
     const p1 = duelData.player1;
@@ -690,6 +763,7 @@ async function startGame(){
     const answerInput = $('answerInput');
     const submitBtn = $('submitBtn');
     const feedback = $('feedback');
+    const opponentNumberDisplay = $('opponentNumber');
     
     // Disable input during countdown
     answerInput.disabled = true;
@@ -697,17 +771,29 @@ async function startGame(){
     feedback.textContent = '';
     stepDisplay.textContent = '0';
     
+    // Change opponent label during countdown
+    const opponentLabel = document.querySelector('#gameScreen .grid > div:nth-child(2) > p:first-child');
+    const originalOpponentLabel = opponentLabel.textContent;
+    opponentLabel.textContent = 'The Number';
+    
     // 3 second countdown
     for(let i = 3; i > 0; i--) {
         countdown.textContent = i;
         countdown.className = 'text-6xl font-bold text-yellow-400 animate-pulse';
+        opponentNumberDisplay.textContent = startNumber;
+        stepDisplay.textContent = `Starting in ${i}...`;
         await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
     // Show "GO!"
     countdown.textContent = 'GO!';
     countdown.className = 'text-6xl font-bold text-green-400';
+    opponentNumberDisplay.textContent = startNumber;
+    stepDisplay.textContent = 'GO!';
     await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Restore opponent label
+    opponentLabel.textContent = originalOpponentLabel;
     
     // Start the actual game
     countdown.className = 'text-3xl font-bold text-yellow-400';
@@ -720,7 +806,45 @@ async function startGame(){
     startTime = Date.now();
     clearInterval(timerInterval);
     timerInterval = setInterval(updateTimer, 100);
+    
+    // Initialize sequence log
+    updateSequenceLog();
+    
     setTimeout(()=> answerInput.focus(), 100);
+}
+
+// -------------------------
+// Update sequence log display
+// -------------------------
+function updateSequenceLog() {
+    const logDiv = $('sequenceLog');
+    logDiv.innerHTML = '';
+    
+    sequence.forEach((num, index) => {
+        const span = document.createElement('span');
+        span.className = 'px-3 py-1 bg-white/20 rounded-lg text-white font-mono';
+        
+        // Highlight the current number
+        if(index === sequence.length - 1) {
+            span.className = 'px-3 py-1 bg-blue-500 rounded-lg text-white font-mono font-bold';
+        }
+        
+        // Special styling for 1 (goal)
+        if(num === 1) {
+            span.className = 'px-3 py-1 bg-green-500 rounded-lg text-white font-mono font-bold';
+        }
+        
+        span.textContent = num;
+        logDiv.appendChild(span);
+        
+        // Add arrow between numbers (except after last one)
+        if(index < sequence.length - 1) {
+            const arrow = document.createElement('span');
+            arrow.className = 'text-gray-400';
+            arrow.textContent = '→';
+            logDiv.appendChild(arrow);
+        }
+    });
 }
 
 // -------------------------
@@ -762,6 +886,9 @@ async function submitAnswer(){
     sequence.push(currentNum);
     $('currentNumber').textContent = currentNum;
     $('stepCount').textContent = stepCount;
+    
+    // Update sequence log
+    updateSequenceLog();
 
     await update(ref(db, `duels/${duelID}/${playerKey}`), {
         currentNumber: currentNum,
@@ -882,11 +1009,17 @@ $('returnLobbyBtn').addEventListener('click', async () => {
     resultScreen.classList.add('hidden');
     duelLobby.classList.remove('hidden');
     
-    // Clear the join code input
+    // Clear the join code input and status message
     $('duelIDInput').value = '';
+    $('duelStatus').textContent = '';
     
     // Cancel disconnect forfeit before deleting
     await cancelDisconnectForfeit();
+    
+    // Refresh rating display after game
+    if(currentUser) {
+        await displayUserRating(currentUser.uid);
+    }
     
     // Delete the duel from database
     if(duelRef) {
