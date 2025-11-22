@@ -1,17 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Collatz Duel Challenge</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
 /* Animations */
-@keyframes pulse-glow {0%,100%{box-shadow:0 0 20px rgba(59,130,246,0.5);}50%{box-shadow:0 0 40px rgba(59,130,246,0.8);}}
+@keyframes pulse-glow {0%,100%{box-shadow:0 0 20px rgba(59,130,246,0.5);}50%{box-shadow:0 0 40px rgba(59,130,246,0.8);} }
 .pulse-glow{animation:pulse-glow 2s ease-in-out infinite;}
 @keyframes slide-in{from{transform:translateY(-20px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 .slide-in{animation:slide-in 0.5s ease-out;}
-@keyframes shake{0%,100%{transform:translateX(0);}10%,30%,50%,70%,90%{transform:translateX(-10px);}20%,40%,60%,80%{transform:translateX(10px);}}
+@keyframes shake{0%,100%{transform:translateX(0);}10%,30%,50%,70%,90%{transform:translateX(-10px);}20%,40%,60%,80%{transform:translateX(10px);} }
 .shake{animation:shake 0.5s ease-in-out;}
 </style>
 </head>
@@ -71,6 +71,7 @@
         </button>
       </div>
       <div id="feedback" class="mt-4 text-center text-lg font-semibold h-8"></div>
+      <div class="mt-2 text-sm text-gray-400">Elapsed: <span id="timer">0.0s</span></div>
     </div>
   </div>
 
@@ -90,55 +91,14 @@
         </div>
       </div>
     </div>
-    <button onclick="returnToLobby()"
+    <button id="returnLobbyBtn"
       class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105">
       Return to Lobby
     </button>
   </div>
 </div>
 
-<!-- Firebase SDK -->
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
-import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js";
-import { 
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-import { 
-  getDatabase, ref, set, push, onValue, update 
-} from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
-
-const firebaseConfig = {
-    apiKey: "AIzaSyB9oK73wo05B6YHViDTUsh2gT-04G4FpP8",
-    authDomain: "collatz-racing.firebaseapp.com",
-    databaseURL: "https://collatz-racing-default-rtdb.firebaseio.com", 
-    projectId: "collatz-racing",
-    storageBucket: "collatz-racing.firebasestorage.app",
-    messagingSenderId: "78351409018",
-    appId: "1:78351409018:web:ff8ecfd3e6018f896dc0c3",
-    measurementId: "G-5J0FS12HGE"
-};
-
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-const auth = getAuth(app);
-const provider = new GoogleAuthProvider();
-const rtdb = getDatabase(app);
-
-// Expose Firebase functions
-window.firebaseAuth = auth;
-window.firebaseProvider = provider;
-window.firebaseSignInWithPopup = signInWithPopup;
-window.firebaseSignOut = signOut;
-window.firebaseOnAuthStateChanged = onAuthStateChanged;
-window.firebaseRTDB = rtdb;
-window.firebaseRTDBRef = ref;
-window.firebaseRTDBSet = set;
-window.firebaseRTDBPush = push;
-window.firebaseRTDBOnValue = onValue;
-window.firebaseRTDBUpdate = update;
-</script>
-
-<script src="index.js"></script>
+<!-- Load firebase libs (these are used by index.js which is a module) -->
+<script type="module" src="index.js"></script>
 </body>
 </html>
