@@ -27,6 +27,7 @@ const db = getDatabase(app);
 // -------------------------
 const TAU = 0.5; // System constant (volatility change)
 const EPSILON = 0.000001; // Convergence tolerance
+const GLICKO2_SCALE = 173.7178; // Glicko-2 scale factor
 
 // -------------------------
 // Glicko-2 Rating System
@@ -40,22 +41,22 @@ class Glicko2 {
 
     // Convert rating to Glicko-2 scale
     toGlicko2(r) {
-        return (r - 1500) / 173.7178;
+        return (r - 1500) / GLICKO2_SCALE;
     }
 
     // Convert back to normal scale
     fromGlicko2(mu) {
-        return mu * 173.7178 + 1500;
+        return mu * GLICKO2_SCALE + 1500;
     }
 
     // Convert RD to Glicko-2 scale
     rdToGlicko2(rd) {
-        return rd / 173.7178;
+        return rd / GLICKO2_SCALE;
     }
 
     // Convert RD back to normal scale
     rdFromGlicko2(phi) {
-        return phi * 173.7178;
+        return phi * GLICKO2_SCALE;
     }
 
     // g function
@@ -76,12 +77,12 @@ class Glicko2 {
         const muJ = this.toGlicko2(opponentRating);
         const phiJ = this.rdToGlicko2(opponentRD);
 
-        // Step 3: Compute v
+        // Step 3: Compute v (variance)
         const gPhi = this.g(phiJ);
         const e = this.E(mu, muJ, phiJ);
         const v = 1 / (gPhi * gPhi * e * (1 - e));
 
-        // Step 4: Compute delta
+        // Step 4: Compute delta (improvement)
         const delta = v * gPhi * (score - e);
 
         // Step 5: Determine new volatility (iterative)
@@ -90,7 +91,7 @@ class Glicko2 {
         // Step 6: Update rating deviation to new pre-rating period value
         const phiStar = Math.sqrt(phi * phi + sigma * sigma);
 
-        // Step 7: Update rating and RD
+        // Step 7: Update rating and RD to new values
         const phiPrime = 1 / Math.sqrt(1 / (phiStar * phiStar) + 1 / v);
         const muPrime = mu + phiPrime * phiPrime * gPhi * (score - e);
 
@@ -132,12 +133,12 @@ class Glicko2 {
         let fA = f(A);
         let fB = f(B);
 
-        // Illinois algorithm
+        // Illinois algorithm iteration
         while (Math.abs(B - A) > EPSILON) {
             const C = A + (A - B) * fA / (fB - fA);
             const fC = f(C);
 
-            if (fC * fB < 0) {
+            if (fC * fB <= 0) {
                 A = B;
                 fA = fB;
             } else {
@@ -226,7 +227,7 @@ async function displayUserRating(uid) {
         const ratingDisplay = document.createElement('p');
         ratingDisplay.id = 'ratingDisplay';
         ratingDisplay.className = 'text-lg font-bold text-blue-400 mt-2';
-        ratingDisplay.textContent = `Rating: ${Math.round(data.rating)} (${data.games} games)`;
+        ratingDisplay.textContent = `Rating: ${data.rating.toFixed(2)} (${data.games} games)`;
         
         const existing = document.getElementById('ratingDisplay');
         if (existing) existing.remove();
@@ -401,6 +402,14 @@ $('joinDuelBtn').addEventListener('click', async () => {
         const snap = await get(duelRef);
         const data = snap.exists() ? snap.val() : null;
         if(!data){ alert("Duel not found!"); duelID = null; duelRef = null; return; }
+
+        // Check if trying to join own duel
+        if(data.player1 && data.player1.uid === currentUser.uid) {
+            alert("You can't race against yourself!");
+            duelID = null;
+            duelRef = null;
+            return;
+        }
 
         if(!data.player2 && data.status === 'pending'){
             startNumber = data.startNumber;
