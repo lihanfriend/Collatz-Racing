@@ -278,6 +278,7 @@ $('logoutBtn').addEventListener('click', async () => {
         startNumber = null;
         gameStarted = false;
         ratingUpdated = false;
+        gameFinishedNormally = false;
         clearCreateCooldown(); // Clear cooldown on logout
         $('duelStatus').textContent = '';
     } catch (err) {
@@ -571,7 +572,8 @@ function listenDuel(){
 
         if(data.player1 && data.player2 && (data.player1.finished || data.player2.finished)){
             if(!ratingUpdated) {
-                updateRatings(data);
+                console.log("Both players present, at least one finished. Updating ratings...");
+                await updateRatings(data);
                 ratingUpdated = true;
                 gameFinishedNormally = true; // Mark that game finished normally
             }
@@ -587,7 +589,12 @@ function listenDuel(){
 async function updateRatings(duelData) {
     const p1 = duelData.player1;
     const p2 = duelData.player2;
-    if(!p1 || !p2) return;
+    if(!p1 || !p2) {
+        console.error("Missing player data for rating update");
+        return;
+    }
+
+    console.log("Starting rating update for:", p1.displayName, "vs", p2.displayName);
 
     // Fetch both players' ratings
     const p1RatingSnap = await get(ref(db, `users/${p1.uid}/rating`));
@@ -595,6 +602,9 @@ async function updateRatings(duelData) {
 
     const p1Data = p1RatingSnap.val() || { rating: 1500, rd: 350, vol: 0.06, games: 0 };
     const p2Data = p2RatingSnap.val() || { rating: 1500, rd: 350, vol: 0.06, games: 0 };
+
+    console.log("P1 before:", p1Data);
+    console.log("P2 before:", p2Data);
 
     // Create Glicko-2 objects
     const p1Glicko = new Glicko2(p1Data.rating, p1Data.rd, p1Data.vol);
@@ -605,6 +615,8 @@ async function updateRatings(duelData) {
     let p2Score = 0.5;
 
     const winner = determineWinner(duelData);
+    console.log("Winner determined:", winner);
+    
     if(winner === p1.displayName) {
         p1Score = 1;
         p2Score = 0;
@@ -613,32 +625,43 @@ async function updateRatings(duelData) {
         p2Score = 1;
     }
 
+    console.log("Scores - P1:", p1Score, "P2:", p2Score);
+
     // Update ratings
     p1Glicko.update(p2Data.rating, p2Data.rd, p1Score);
     p2Glicko.update(p1Data.rating, p1Data.rd, p2Score);
 
+    console.log("P1 after:", p1Glicko.rating, "games:", p1Data.games + 1);
+    console.log("P2 after:", p2Glicko.rating, "games:", p2Data.games + 1);
+
     // Save back to Firebase
-    await set(ref(db, `users/${p1.uid}/rating`), {
-        rating: p1Glicko.rating,
-        rd: p1Glicko.rd,
-        vol: p1Glicko.vol,
-        games: p1Data.games + 1,
-        email: duelData.player1.email || 'no-email@example.com',
-        displayName: p1.displayName
-    });
+    try {
+        await set(ref(db, `users/${p1.uid}/rating`), {
+            rating: p1Glicko.rating,
+            rd: p1Glicko.rd,
+            vol: p1Glicko.vol,
+            games: p1Data.games + 1,
+            email: p1.email || 'no-email@example.com',
+            displayName: p1.displayName
+        });
 
-    await set(ref(db, `users/${p2.uid}/rating`), {
-        rating: p2Glicko.rating,
-        rd: p2Glicko.rd,
-        vol: p2Glicko.vol,
-        games: p2Data.games + 1,
-        email: duelData.player2.email || 'no-email@example.com',
-        displayName: p2.displayName
-    });
+        await set(ref(db, `users/${p2.uid}/rating`), {
+            rating: p2Glicko.rating,
+            rd: p2Glicko.rd,
+            vol: p2Glicko.vol,
+            games: p2Data.games + 1,
+            email: p2.email || 'no-email@example.com',
+            displayName: p2.displayName
+        });
+        
+        console.log("Ratings saved to Firebase successfully");
+    } catch(err) {
+        console.error("Error saving ratings:", err);
+    }
 
-    // Update display
+    // Update display for current user
     if(currentUser) {
-        displayUserRating(currentUser.uid);
+        await displayUserRating(currentUser.uid);
     }
 }
 
@@ -816,6 +839,9 @@ async function showResult(winner, duelData){
         resultScreen.querySelector('h2').after(forfeitDiv);
     }
     
+    // Wait a bit for Firebase to update, then fetch fresh rating
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     // Show rating changes
     if(currentUser) {
         const userRatingSnap = await get(ref(db, `users/${currentUser.uid}/rating`));
@@ -824,13 +850,17 @@ async function showResult(winner, duelData){
             const ratingChange = document.createElement('div');
             ratingChange.className = 'mt-4 text-lg';
             
-            // Get old rating from before the game (stored value)
-            const oldRating = Math.round(newRating.rating);
+            const ratingChangeValue = preGameRating ? (newRating.rating - preGameRating).toFixed(1) : 0;
+            const changeColor = ratingChangeValue > 0 ? 'text-green-400' : 'text-red-400';
+            const changeSign = ratingChangeValue > 0 ? '+' : '';
             
             ratingChange.innerHTML = `
                 <p class="text-blue-400 font-bold">Your New Rating: ${Math.round(newRating.rating)}</p>
+                ${preGameRating ? `<p class="${changeColor} text-sm">${changeSign}${ratingChangeValue} rating change</p>` : ''}
                 <p class="text-gray-400 text-sm">${newRating.games} games played</p>
             `;
+            
+            console.log("Displaying rating - Old:", preGameRating, "New:", newRating.rating, "Games:", newRating.games);
             
             // Remove existing rating display if present
             const existingRating = resultScreen.querySelector('.rating-display');
@@ -838,6 +868,8 @@ async function showResult(winner, duelData){
             
             ratingChange.classList.add('rating-display');
             resultScreen.querySelector('.bg-white\\/5').appendChild(ratingChange);
+        } else {
+            console.error("Could not fetch updated rating for display");
         }
     }
 }
@@ -870,6 +902,7 @@ $('returnLobbyBtn').addEventListener('click', async () => {
     // Reset game state
     gameStarted = false;
     ratingUpdated = false;
+    gameFinishedNormally = false;
 });
 
 // -------------------------
