@@ -1,7 +1,7 @@
 // index.js (module) - Collatz Duel with Firebase Auth + RTDB + Glicko-2
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js";
-import { getDatabase, ref, set, push, onValue, update, get } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
+import { getDatabase, ref, set, push, onValue, update, get, remove } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js";
 
 // -------------------------
 // Firebase config & init
@@ -166,6 +166,8 @@ let duelRef = null;
 let gameStarted = false;
 let ratingUpdated = false;
 let preGameRating = null; // Store rating before game starts
+let createCooldown = false; // Track if create button is on cooldown
+let cooldownTimer = null; // Store cooldown interval
 
 // -------------------------
 // DOM refs
@@ -253,6 +255,7 @@ $('logoutBtn').addEventListener('click', async () => {
         startNumber = null;
         gameStarted = false;
         ratingUpdated = false;
+        clearCreateCooldown(); // Clear cooldown on logout
         $('duelStatus').textContent = '';
     } catch (err) {
         console.error("Sign-out error:", err);
@@ -261,15 +264,74 @@ $('logoutBtn').addEventListener('click', async () => {
 });
 
 // -------------------------
+// Start Create Cooldown
+// -------------------------
+function startCreateCooldown() {
+    createCooldown = true;
+    const btn = $('createDuelBtn');
+    let timeLeft = 15;
+    
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    const originalText = btn.textContent;
+    btn.textContent = `Wait ${timeLeft}s`;
+    
+    clearInterval(cooldownTimer);
+    cooldownTimer = setInterval(() => {
+        timeLeft--;
+        if(timeLeft > 0) {
+            btn.textContent = `Wait ${timeLeft}s`;
+        } else {
+            clearInterval(cooldownTimer);
+            createCooldown = false;
+            btn.disabled = false;
+            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            btn.textContent = originalText;
+        }
+    }, 1000);
+}
+
+// -------------------------
+// Clear Create Cooldown (when duel starts)
+// -------------------------
+function clearCreateCooldown() {
+    if(cooldownTimer) {
+        clearInterval(cooldownTimer);
+        cooldownTimer = null;
+    }
+    createCooldown = false;
+    const btn = $('createDuelBtn');
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    btn.textContent = 'Create Duel';
+}
+
+// -------------------------
 // Generate short code for duels
 // -------------------------
-function generateShortCode() {
+async function generateShortCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars like 0, O, I, 1
     let code = '';
-    for(let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    // Keep generating until we find a unique code
+    while(attempts < maxAttempts) {
+        code = '';
+        for(let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        
+        // Check if this code already exists
+        const existingDuel = await get(ref(db, `duels/${code}`));
+        if(!existingDuel.exists()) {
+            return code;
+        }
+        attempts++;
     }
-    return code;
+    
+    // If we somehow couldn't find a unique code after 10 tries, add a random suffix
+    return code + chars.charAt(Math.floor(Math.random() * chars.length));
 }
 
 // -------------------------
@@ -290,9 +352,14 @@ function generateStartingNumber(){
 // -------------------------
 $('createDuelBtn').addEventListener('click', async () => {
     if(!currentUser){ alert("Please sign in first."); return; }
+    if(createCooldown){ 
+        alert("Please wait before creating another duel."); 
+        return; 
+    }
+    
     startNumber = generateStartingNumber();
-    // Generate short 6-character code
-    duelID = generateShortCode();
+    // Generate short 6-character code (now async)
+    duelID = await generateShortCode();
     duelRef = ref(db, `duels/${duelID}`);
 
     const payload = {
@@ -313,6 +380,9 @@ $('createDuelBtn').addEventListener('click', async () => {
         gameStarted = false;
         ratingUpdated = false;
         listenDuel();
+        
+        // Start cooldown
+        startCreateCooldown();
     } catch (err) {
         console.error("Error creating duel:", err);
         alert("Failed to create duel.");
@@ -372,6 +442,7 @@ function listenDuel(){
         if(data.status === 'active' && !gameStarted){
             gameStarted = true;
             startNumber = data.startNumber;
+            clearCreateCooldown(); // Clear cooldown when duel starts
             startGame();
         }
 
@@ -601,11 +672,23 @@ async function showResult(winner, duelData){
 // -------------------------
 // Return to Lobby
 // -------------------------
-$('returnLobbyBtn').addEventListener('click', () => {
+$('returnLobbyBtn').addEventListener('click', async () => {
     resultScreen.classList.add('hidden');
     duelLobby.classList.remove('hidden');
     gameStarted = false;
     ratingUpdated = false;
+    
+    // Delete the duel from database
+    if(duelRef) {
+        try {
+            await remove(duelRef);
+            console.log(`Duel ${duelID} deleted from database`);
+        } catch(err) {
+            console.error("Error deleting duel:", err);
+        }
+        duelRef = null;
+        duelID = null;
+    }
 });
 
 // -------------------------
