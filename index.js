@@ -401,8 +401,10 @@ $('createDuelBtn').onclick = async () => {
     startNumber = generateStartingNumber();
     duelID = await generateShortCode();
     duelRef = ref(db, `duels/${duelID}`);
+    const expiresAt = Date.now() + (60 * 60 * 1000); // 1 hour from now
     await set(duelRef, {
         startNumber, status: 'pending', rated: isRatedGame,
+        createdAt: Date.now(), expiresAt,
         player1: { uid: currentUser.uid, displayName: currentUser.displayName || 'Anonymous',
             email: currentUser.email || 'no-email@example.com', currentNumber: startNumber, steps: 0, finished: false }
     });
