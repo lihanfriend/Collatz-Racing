@@ -283,7 +283,7 @@ async function displayUserRating(uid) {
                 if (data.rd > 110) {
                     rdColor = 'text-yellow-400';
                     rdStatus = 'Provisional';
-                } else if (data.rd >= 80) {
+                } else if (data.rd > 85) {
                     rdColor = 'text-orange-400';
                     rdStatus = 'Establishing';
                 }
