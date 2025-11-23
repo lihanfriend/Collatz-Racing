@@ -144,6 +144,7 @@ onAuthStateChanged(auth, async (user) => {
         $('lobbyScreen').classList.remove('hidden');
         await initializeUserRating(user.uid);
         await displayUserRating(user.uid);
+        await loadLeaderboard();
         $('userInfoDisplay').textContent = `Signed in as: ${user.displayName || 'Anonymous'}`;
     } else {
         $('loginScreen').classList.remove('hidden');
@@ -204,6 +205,18 @@ async function displayUserRating(uid) {
         const provisional = data.rd > 110 ? '?' : '';
         const gamesText = data.games === 1 ? 'game' : 'games';
         $('ratingDisplay').innerHTML = `<p class="text-lg font-bold text-blue-400">Rating: ${Math.round(data.rating)}${provisional} (${data.games} ${gamesText})</p>`;
+        
+        // Display RD with color coding
+        let rdColor = 'text-green-400';
+        let rdStatus = 'Stable';
+        if (data.rd > 110) {
+            rdColor = 'text-yellow-400';
+            rdStatus = 'Provisional';
+        } else if (data.rd >= 80) {
+            rdColor = 'text-orange-400';
+            rdStatus = 'Establishing';
+        }
+        $('rdDisplay').innerHTML = `<p class="${rdColor}">RD: ${Math.round(data.rd)} (${rdStatus})</p>`;
     }
 }
 
@@ -231,6 +244,57 @@ async function updatePlayerRating(duelData) {
     await displayUserRating(currentUser.uid);
 }
 
+// ==================== LEADERBOARD ====================
+async function loadLeaderboard() {
+    const usersRef = ref(db, 'users');
+    const snap = await get(usersRef);
+    if (!snap.exists()) {
+        $('leaderboard').innerHTML = '<p class="text-gray-400 text-sm text-center">No players yet</p>';
+        return;
+    }
+    
+    const users = [];
+    snap.forEach(child => {
+        const data = child.val();
+        if (data.rating && data.rating.games >= 3 && data.rating.rd < 80) {
+            users.push({
+                uid: child.key,
+                displayName: data.rating.displayName || 'Anonymous',
+                rating: data.rating.rating,
+                games: data.rating.games,
+                rd: data.rating.rd
+            });
+        }
+    });
+    
+    users.sort((a, b) => b.rating - a.rating);
+    const top10 = users.slice(0, 10);
+    
+    if (top10.length === 0) {
+        $('leaderboard').innerHTML = '<p class="text-gray-400 text-sm text-center">No ranked players yet (3+ games, RD &lt; 80 required)</p>';
+        return;
+    }
+    
+    $('leaderboard').innerHTML = top10.map((user, index) => {
+        const isCurrentUser = currentUser && user.uid === currentUser.uid;
+        const bgColor = isCurrentUser ? 'bg-blue-500/20 border border-blue-500/50' : 'bg-white/5';
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+        
+        return `
+            <div class="${bgColor} rounded-lg p-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="text-xl font-bold w-8">${medal}</span>
+                    <span class="font-semibold ${isCurrentUser ? 'text-blue-300' : 'text-white'}">${user.displayName}</span>
+                </div>
+                <div class="text-right">
+                    <span class="font-bold text-yellow-400">${Math.round(user.rating)}</span>
+                    <span class="text-gray-400 text-xs ml-2">(${user.games})</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 // ==================== DUEL MANAGEMENT ====================
 $('duelCodeInput').oninput = (e) => {
     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -251,8 +315,10 @@ $('createDuelBtn').onclick = async () => {
         player1: { uid: currentUser.uid, displayName: currentUser.displayName || 'Anonymous',
             email: currentUser.email || 'no-email@example.com', currentNumber: startNumber, steps: 0, finished: false }
     });
-    const statusSnap = await get(ref(db, `duels/${duelID}/status`));
-    if (statusSnap.exists() && statusSnap.val() === 'pending') onDisconnect(duelRef).remove();
+    
+    // Set up auto-cleanup if creator leaves while pending
+    onDisconnect(duelRef).remove();
+    
     const gameMode = isRatedGame ? 'Rated' : 'Casual';
     $('lobbyStatus').textContent = `${gameMode} duel created! Code: ${duelID}. Waiting for opponent...`;
     startCreateCooldown();
@@ -513,6 +579,9 @@ $('returnLobbyBtn').onclick = async () => {
         }
         await remove(duelRef);
     }
-    if (currentUser) await displayUserRating(currentUser.uid);
+    if (currentUser) {
+        await displayUserRating(currentUser.uid);
+        await loadLeaderboard();
+    }
     duelID = null; duelRef = null; gameStarted = false; ratingUpdated = false; gameFinishedNormally = false;
 };
