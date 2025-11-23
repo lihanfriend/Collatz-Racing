@@ -24,6 +24,12 @@
   100% { transform: scale(1); opacity: 1; }
 }
 .bounce-in { animation: bounce-in 0.5s ease-out; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in { animation: fade-in 0.3s ease-out; }
 </style>
 </head>
 <body class="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen text-white">
@@ -41,46 +47,56 @@
   </div>
 
   <!-- Lobby Screen -->
-  <div id="lobbyScreen" class="hidden bg-white/10 backdrop-blur-md rounded-2xl p-8 border border-white/20 space-y-6">
-    <!-- Header -->
-    <div class="text-center">
+  <div id="lobbyScreen" class="hidden space-y-6">
+    <!-- Header Card -->
+    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 text-center">
       <h2 class="text-3xl font-bold mb-2">Collatz Racing Lobby</h2>
       <p class="text-sm text-gray-400" id="userInfoDisplay"></p>
       <div id="ratingDisplay" class="mt-2"></div>
       <div id="rdDisplay" class="mt-1 text-sm"></div>
       <div class="mt-3 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 max-w-md mx-auto">
         <p class="text-xs text-gray-300 leading-relaxed">
-          <span class="font-semibold text-blue-400">Rating Deviation (RD):</span> Lower RD means your rating is more stable. Above 110 is considered provisional. To be included in the rankings, your RD must be less than or equal to 85.
+          <span class="font-semibold text-blue-400">Rating Deviation (RD):</span> Lower RD means your rating is more stable. Above 110 is provisional. To be ranked, your RD must be under 85.
         </p>
       </div>
     </div>
     
-    <!-- Leaderboard -->
-    <div class="bg-white/5 rounded-lg p-4">
+    <!-- Leaderboard Toggle -->
+    <div class="text-center">
+      <button id="toggleLeaderboardBtn" 
+        class="bg-white/5 hover:bg-white/10 text-white font-semibold py-2 px-6 rounded-lg transition-all border border-white/20">
+        🏆 Show Leaderboard
+      </button>
+    </div>
+    
+    <!-- Leaderboard Container -->
+    <div id="leaderboardContainer" class="hidden bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 fade-in">
       <h3 class="text-xl font-bold mb-3 text-center text-blue-400">🏆 Top Players</h3>
       <div id="leaderboard" class="space-y-2 max-h-64 overflow-y-auto">
         <p class="text-gray-400 text-sm text-center">Loading leaderboard...</p>
       </div>
     </div>
     
-    <!-- Rated/Casual Toggle -->
-    <div class="flex items-center justify-center gap-3 bg-white/5 rounded-lg p-4">
-      <span class="text-sm text-gray-400">🎮 Casual</span>
-      <label class="relative inline-flex items-center cursor-pointer">
-        <input type="checkbox" id="ratedToggle" class="sr-only peer" checked>
-        <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-      </label>
-      <span class="text-sm font-semibold text-blue-400">⭐ Rated</span>
+    <!-- Game Mode Selection -->
+    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20">
+      <div class="flex items-center justify-center gap-3">
+        <span class="text-sm text-gray-400">🎮 Casual</span>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" id="ratedToggle" class="sr-only peer" checked>
+          <div class="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+        </label>
+        <span class="text-sm font-semibold text-blue-400">⭐ Rated</span>
+      </div>
     </div>
     
-    <!-- Create/Join Controls -->
-    <div class="text-center space-y-4">
+    <!-- Create/Join Duel -->
+    <div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 space-y-4">
       <button id="createDuelBtn" 
-        class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105 w-full max-w-md">
+        class="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105 w-full">
         Create Duel
       </button>
       
-      <div class="flex gap-2 max-w-md mx-auto">
+      <div class="flex gap-2">
         <input type="text" id="duelCodeInput" placeholder="Enter Duel Code" 
           class="flex-1 px-4 py-3 rounded-lg text-black text-center font-mono uppercase tracking-wider"
           maxlength="6">
@@ -89,12 +105,12 @@
           Join Duel
         </button>
       </div>
+      
+      <p class="text-gray-300 text-center min-h-[24px]" id="lobbyStatus"></p>
     </div>
     
-    <p class="text-gray-300 text-center min-h-[24px]" id="lobbyStatus"></p>
-    
     <!-- Logout -->
-    <div class="text-center pt-4 border-t border-white/10">
+    <div class="text-center">
       <button id="logoutBtn" class="text-sm text-red-400 hover:text-red-300 underline transition-colors">
         Sign out
       </button>
