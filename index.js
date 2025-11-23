@@ -462,10 +462,8 @@ $('createDuelBtn').onclick = async () => {
     startNumber = generateStartingNumber();
     duelID = await generateShortCode();
     duelRef = ref(db, `duels/${duelID}`);
-    const expiresAt = Date.now() + (60 * 60 * 1000); // 1 hour from now
     await set(duelRef, {
         startNumber, status: 'pending', rated: isRatedGame,
-        createdAt: Date.now(), expiresAt,
         player1: { uid: currentUser.uid, displayName: currentUser.displayName || 'Anonymous',
             email: currentUser.email || 'no-email@example.com', currentNumber: startNumber, steps: 0, finished: false }
     });
@@ -534,28 +532,17 @@ function listenToDuel() {
         }
         const p1 = data.player1, p2 = data.player2;
         if (p1 && p2 && (p1.disconnected || p2.disconnected || p1.forfeit || p2.forfeit)) {
-            if (!ratingUpdated && gameStarted) {
-                if (isRatedGame) await updateBothPlayersRatings(data);
-                ratingUpdated = true; 
-                gameFinishedNormally = true;
+            if (!ratingUpdated) {
+                if (isRatedGame) await updatePlayerRating(data);
+                ratingUpdated = true; gameFinishedNormally = true;
                 showResult(determineWinner(data), data);
-                
-                setTimeout(async () => {
-                    if (duelRef) await remove(duelRef);
-                }, 5000);
             }
             return;
         }
         if (p1 && p2 && (p1.finished || p2.finished)) {
             if (!ratingUpdated) {
-                if (isRatedGame) await updateBothPlayersRatings(data);
-                ratingUpdated = true; 
-                gameFinishedNormally = true;
-                showResult(determineWinner(data), data);
-                
-                setTimeout(async () => {
-                    if (duelRef) await remove(duelRef);
-                }, 5000);
+                if (isRatedGame) await updatePlayerRating(data);
+                ratingUpdated = true; gameFinishedNormally = true;
             }
         }
     });
