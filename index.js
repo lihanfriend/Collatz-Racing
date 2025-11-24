@@ -156,6 +156,7 @@ let timerInterval = null;
 let createCooldown = false;
 let cooldownInterval = null;
 let isRatedGame = true;
+let processingGameEnd = false;
 
 // ==================== DOM ====================
 const $ = id => document.getElementById(id);
@@ -522,6 +523,11 @@ $('joinDuelBtn').onclick = async () => {
 function listenToDuel() {
     if (!duelRef) return;
     
+    // Reset state flags for new game
+    ratingUpdated = false;
+    gameFinishedNormally = false;
+    processingGameEnd = false; // Reset global flag
+    
     // Unsubscribe from previous listener if it exists
     if (duelUnsubscribe) {
         duelUnsubscribe();
@@ -529,7 +535,6 @@ function listenToDuel() {
     }
     
     let hasUnsubscribed = false;
-    let processingGameEnd = false;
     
     // Store the unsubscribe function
     duelUnsubscribe = onValue(duelRef, async (snapshot) => {
