@@ -142,6 +142,7 @@ class Glicko2 {
 let currentUser = null;
 let duelID = null;
 let duelRef = null;
+let duelUnsubscribe = null;
 let startNumber = null;
 let currentNumber = null;
 let stepCount = 0;
@@ -155,6 +156,7 @@ let timerInterval = null;
 let createCooldown = false;
 let cooldownInterval = null;
 let isRatedGame = true;
+let duelUnsubscribe = null;
 
 // ==================== DOM ====================
 const $ = id => document.getElementById(id);
@@ -218,6 +220,12 @@ $('loginBtn').onclick = async () => {
 
 $('logoutBtn').onclick = async () => {
     try {
+        // Clean up listener
+        if (duelUnsubscribe) {
+            duelUnsubscribe();
+            duelUnsubscribe = null;
+        }
+        
         await signOut(auth);
         duelID = null;
         duelRef = null;
@@ -484,10 +492,16 @@ $('joinDuelBtn').onclick = async () => {
 function listenToDuel() {
     if (!duelRef) return;
     
+    // Unsubscribe from previous listener if it exists
+    if (duelUnsubscribe) {
+        duelUnsubscribe();
+        duelUnsubscribe = null;
+    }
+    
     let hasUnsubscribed = false;
     
     // Store the unsubscribe function
-    const unsubscribe = onValue(duelRef, async (snapshot) => {
+    duelUnsubscribe = onValue(duelRef, async (snapshot) => {
         // Prevent processing after unsubscribe
         if (hasUnsubscribed) return;
         
@@ -500,9 +514,10 @@ function listenToDuel() {
                 clearInterval(timerInterval);
             }
             duelID = null; duelRef = null; 
-            if (!hasUnsubscribed) {
+            if (!hasUnsubscribed && duelUnsubscribe) {
                 hasUnsubscribed = true;
-                unsubscribe();
+                duelUnsubscribe();
+                duelUnsubscribe = null;
             }
             return;
         }
@@ -535,9 +550,10 @@ function listenToDuel() {
                 showResult(determineWinner(data), data);
                 
                 // Clean up listener
-                if (!hasUnsubscribed) {
+                if (!hasUnsubscribed && duelUnsubscribe) {
                     hasUnsubscribed = true;
-                    unsubscribe();
+                    duelUnsubscribe();
+                    duelUnsubscribe = null;
                 }
             }
             return;
@@ -554,9 +570,10 @@ function listenToDuel() {
                 showResult(determineWinner(data), data);
                 
                 // Clean up listener
-                if (!hasUnsubscribed) {
+                if (!hasUnsubscribed && duelUnsubscribe) {
                     hasUnsubscribed = true;
-                    unsubscribe();
+                    duelUnsubscribe();
+                    duelUnsubscribe = null;
                 }
             }
         }
@@ -742,7 +759,14 @@ async function showResult(winner, duelData) {
 $('returnLobbyBtn').onclick = async () => {
     $('resultScreen').classList.add('hidden'); $('lobbyScreen').classList.remove('hidden');
     $('duelCodeInput').value = ''; $('lobbyStatus').textContent = '';
-    $('answerInput').value = ''; // Clear answer input when returning to lobby
+    $('answerInput').value = '';
+    
+    // Clean up listener
+    if (duelUnsubscribe) {
+        duelUnsubscribe();
+        duelUnsubscribe = null;
+    }
+    
     if (duelRef) {
         const snap = await get(duelRef);
         const data = snap.val();
