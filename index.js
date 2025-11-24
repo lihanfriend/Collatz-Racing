@@ -94,46 +94,62 @@ class Glicko2 {
         const a = Math.log(this.vol * this.vol);
         const deltaSq = delta * delta;
         const phiSq = phi * phi;
-
+    
         const f = (x) => {
             const ex = Math.exp(x);
             const top = ex * (deltaSq - phiSq - v - ex);
             const bottom = 2 * Math.pow(phiSq + v + ex, 2);
             return (top / bottom) - ((x - a) / (TAU * TAU));
         };
-
+    
         let A = a;
         let B;
-
+    
         if (deltaSq > phiSq + v) {
             B = Math.log(deltaSq - phiSq - v);
         } else {
             B = a - TAU;
         }
-
+    
         let fA = f(A);
         let fB = f(B);
-
-        while (fB > 0) {
+    
+        let iterations = 0;
+        const MAX_ITERATIONS = 1000; // Safety limit
+    
+        while (fB > 0 && iterations < MAX_ITERATIONS) {
             B -= TAU;
             fB = f(B);
+            iterations++;
         }
-
-        while (Math.abs(B - A) > EPSILON) {
+    
+        if (iterations >= MAX_ITERATIONS) {
+            console.error('Max iterations reached in first while loop');
+            return this.vol; // Return current volatility if stuck
+        }
+    
+        iterations = 0;
+        while (Math.abs(B - A) > EPSILON && iterations < MAX_ITERATIONS) {
             const C = A + (A - B) * fA / (fB - fA);
             const fC = f(C);
-
+    
             if (fC * fB < 0) {
                 A = B;
                 fA = fB;
             } else {
                 fA = fA / 2;
             }
-
+    
             B = C;
             fB = fC;
+            iterations++;
         }
-
+    
+        if (iterations >= MAX_ITERATIONS) {
+            console.error('Max iterations reached in second while loop');
+            return this.vol; // Return current volatility if stuck
+        }
+    
         return Math.exp(A / 2);
     }
 }
@@ -526,7 +542,7 @@ function listenToDuel() {
     // Reset state flags for new game
     ratingUpdated = false;
     gameFinishedNormally = false;
-    processingGameEnd = false; // Reset global flag
+    processingGameEnd = false;
     
     // Unsubscribe from previous listener if it exists
     if (duelUnsubscribe) {
@@ -539,7 +555,10 @@ function listenToDuel() {
     // Store the unsubscribe function
     duelUnsubscribe = onValue(duelRef, async (snapshot) => {
         // Prevent processing after unsubscribe
-        if (hasUnsubscribed || processingGameEnd) return;
+        if (hasUnsubscribed || processingGameEnd) {
+            console.log('Skipping listener callback - already processed');
+            return;
+        }
         
         const data = snapshot.val();
         if (!data) {
@@ -557,19 +576,25 @@ function listenToDuel() {
             }
             return;
         }
+        
         if (data.rated !== undefined) isRatedGame = data.rated;
+        
         if (data.status === 'active' && !gameStarted) {
-            gameStarted = true; gameFinishedNormally = false; startNumber = data.startNumber;
+            gameStarted = true; 
+            gameFinishedNormally = false; 
+            startNumber = data.startNumber;
             clearCreateCooldown();
             if (duelRef) onDisconnect(duelRef).cancel();
             await setupDisconnectForfeit();
             await startGame();
         }
+        
         const opponentKey = (data.player1 && data.player1.uid === currentUser?.uid) ? 'player2' : 'player1';
         if (data[opponentKey]) {
             $('opponentNumber').textContent = data[opponentKey].currentNumber;
             $('opponentSteps').textContent = data[opponentKey].steps;
         }
+        
         const p1 = data.player1, p2 = data.player2;
         
         // Skip if we don't have both players yet
@@ -578,25 +603,29 @@ function listenToDuel() {
         // Check for disconnects or forfeits FIRST
         if (p1.disconnected || p2.disconnected || p1.forfeit || p2.forfeit) {
             if (!ratingUpdated && !processingGameEnd) {
+                console.log('=== DISCONNECT DETECTED ===');
                 processingGameEnd = true;
                 ratingUpdated = true;
                 gameFinishedNormally = true;
                 
-                console.log('Processing disconnect/forfeit');
-                
                 // UNSUBSCRIBE IMMEDIATELY before async operations
                 if (!hasUnsubscribed && duelUnsubscribe) {
+                    console.log('Unsubscribing from listener');
                     hasUnsubscribed = true;
                     duelUnsubscribe();
                     duelUnsubscribe = null;
                 }
                 
+                console.log('Starting rating update (disconnect)');
                 // Update BOTH players' ratings on disconnect/forfeit
                 if (isRatedGame) {
                     await updateBothPlayersRating(data);
                 }
+                console.log('Rating update complete (disconnect)');
                 
-                showResult(determineWinner(data), data);
+                console.log('Showing result screen (disconnect)');
+                await showResult(determineWinner(data), data);
+                console.log('Result screen shown (disconnect)');
                 
                 // Delete the duel after a short delay
                 setTimeout(async () => {
@@ -608,6 +637,8 @@ function listenToDuel() {
                         console.error('Error deleting duel:', error);
                     }
                 }, 2000);
+                
+                console.log('=== DISCONNECT PROCESSING COMPLETE ===');
             }
             return;
         }
@@ -615,25 +646,33 @@ function listenToDuel() {
         // Check if either player finished (reached 1 or got wrong answer)
         if (p1.finished || p2.finished) {
             if (!ratingUpdated && !processingGameEnd) {
+                console.log('=== GAME END DETECTED ===');
+                console.log('P1 finished:', p1.finished, 'P2 finished:', p2.finished);
+                
                 processingGameEnd = true;
                 ratingUpdated = true;
                 gameFinishedNormally = true;
                 
-                console.log('Processing game end - P1 finished:', p1.finished, 'P2 finished:', p2.finished);
-                
                 // UNSUBSCRIBE IMMEDIATELY before async operations
                 if (!hasUnsubscribed && duelUnsubscribe) {
+                    console.log('Unsubscribing from listener');
                     hasUnsubscribed = true;
                     duelUnsubscribe();
                     duelUnsubscribe = null;
                 }
                 
+                console.log('Starting rating update');
                 // Now do the async operations
                 if (isRatedGame) {
                     await updateBothPlayersRating(data);
                 }
+                console.log('Rating update complete');
                 
-                showResult(determineWinner(data), data);
+                console.log('Showing result screen');
+                await showResult(determineWinner(data), data);
+                console.log('Result screen shown');
+                
+                console.log('=== GAME END PROCESSING COMPLETE ===');
             }
         }
     });
@@ -823,6 +862,8 @@ function determineWinner(duelData) {
 }
 
 async function showResult(winner, duelData) {
+    console.log('showResult called, winner:', winner);
+    
     $('gameScreen').classList.add('hidden'); 
     $('resultScreen').classList.remove('hidden');
     const p1 = duelData.player1, p2 = duelData.player2;
@@ -834,24 +875,32 @@ async function showResult(winner, duelData) {
     if (p1.disconnected || p1.forfeit) forfeitMsg = `${p1.displayName} disconnected and forfeited!`;
     else if (p2.disconnected || p2.forfeit) forfeitMsg = `${p2.displayName} disconnected and forfeited!`;
     $('forfeitMessage').textContent = forfeitMsg;
+    
     await new Promise(r => setTimeout(r, 500));
+    
     const ratingDisplay = $('ratingChangeDisplay');
     if (currentUser && isRatedGame) {
-        const snap = await get(ref(db, `users/${currentUser.uid}`)); // FIXED: removed /rating
-        if (snap.exists()) {
-            const newRating = snap.val();
-            const change = preGameRating ? (newRating.rating - preGameRating).toFixed(1) : 0;
-            const changeColor = change > 0 ? 'text-green-400' : 'text-red-400';
-            const changeSign = change > 0 ? '+' : '';
-            ratingDisplay.innerHTML = `
-                <p class="text-blue-400 font-bold">Your New Rating: ${Math.round(newRating.rating)}</p>
-                ${preGameRating ? `<p class="${changeColor} text-sm">${changeSign}${change} rating change</p>` : ''}
-                <p class="text-gray-400 text-sm">${newRating.games} games played</p>
-            `;
+        try {
+            const snap = await get(ref(db, `users/${currentUser.uid}`));
+            if (snap.exists()) {
+                const newRating = snap.val();
+                const change = preGameRating ? (newRating.rating - preGameRating).toFixed(1) : 0;
+                const changeColor = change > 0 ? 'text-green-400' : 'text-red-400';
+                const changeSign = change > 0 ? '+' : '';
+                ratingDisplay.innerHTML = `
+                    <p class="text-blue-400 font-bold">Your New Rating: ${Math.round(newRating.rating)}</p>
+                    ${preGameRating ? `<p class="${changeColor} text-sm">${changeSign}${change} rating change</p>` : ''}
+                    <p class="text-gray-400 text-sm">${newRating.games} games played</p>
+                `;
+            }
+        } catch (error) {
+            console.error('Error displaying rating in showResult:', error);
         }
     } else if (!isRatedGame) {
         ratingDisplay.innerHTML = `<p class="text-gray-400 text-sm">🎮 Casual Game - No rating change</p>`;
     }
+    
+    console.log('showResult completed');
 }
 
 $('returnLobbyBtn').onclick = async () => {
