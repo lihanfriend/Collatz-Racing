@@ -558,7 +558,7 @@ function listenToDuel() {
         // Check for disconnects or forfeits FIRST
         if (p1 && p2 && (p1.disconnected || p2.disconnected || p1.forfeit || p2.forfeit)) {
             if (!ratingUpdated) {
-                ratingUpdated = true; // Set this immediately to prevent duplicate updates
+                ratingUpdated = true;
                 gameFinishedNormally = true;
                 
                 // Update BOTH players' ratings on disconnect/forfeit
@@ -567,6 +567,18 @@ function listenToDuel() {
                 }
                 
                 showResult(determineWinner(data), data);
+                
+                // Delete the duel after a short delay to allow the other player to see results
+                setTimeout(async () => {
+                    try {
+                        if (duelRef) {
+                            await remove(duelRef);
+                            console.log('Duel deleted after disconnect');
+                        }
+                    } catch (error) {
+                        console.error('Error deleting duel:', error);
+                    }
+                }, 2000);
                 
                 // Clean up listener
                 if (!hasUnsubscribed && duelUnsubscribe) {
@@ -581,7 +593,7 @@ function listenToDuel() {
         // Then check for normal finish
         if (p1 && p2 && (p1.finished || p2.finished)) {
             if (!ratingUpdated) {
-                ratingUpdated = true; // Set this immediately to prevent duplicate updates
+                ratingUpdated = true;
                 gameFinishedNormally = true;
                 
                 if (isRatedGame) await updateBothPlayersRating(data);
@@ -615,11 +627,6 @@ async function setupDisconnectForfeit() {
         forfeit: true,
         disconnectTime: Date.now()
     });
-    
-    // Also set up the entire duel to be deleted after a short delay
-    // This gives the other player time to see the result before cleanup
-    const duelDeleteRef = ref(db, `duels/${duelID}`);
-    onDisconnect(duelDeleteRef).remove();
 }
 
 function startCreateCooldown() {
@@ -677,11 +684,14 @@ async function startGame() {
     $('yourSteps').textContent = '0'; 
     $('opponentNumber').textContent = startNumber; 
     $('opponentSteps').textContent = '0';
-    
-    // Clear timer display before countdown
     $('gameTimer').textContent = '0.0s';
-    clearInterval(timerInterval);
     
+    // Make sure timer is not running
+    clearInterval(timerInterval);
+    timerInterval = null;
+    startTime = 0;
+    
+    // Countdown
     for (let i = 3; i > 0; i--) {
         $('yourNumber').textContent = i; 
         $('yourNumber').className = 'text-6xl font-bold text-yellow-400 animate-pulse';
@@ -700,10 +710,8 @@ async function startGame() {
     $('answerInput').disabled = false; 
     $('submitBtn').disabled = false;
     
-    // Set startTime RIGHT BEFORE starting the timer
+    // NOW start the timer - after countdown is complete
     startTime = Date.now();
-    
-    // Start the timer interval
     timerInterval = setInterval(() => { 
         const elapsed = (Date.now() - startTime) / 1000;
         $('gameTimer').textContent = elapsed.toFixed(1) + 's'; 
