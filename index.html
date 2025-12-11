@@ -147,7 +147,12 @@
       </div>
       <div class="bg-white/10 backdrop-blur-md rounded-xl p-4 text-center border border-white/20">
         <p class="text-sm text-gray-400 mb-1">Opponent's Number</p>
-        <p class="text-3xl font-bold text-pink-400" id="opponentNumber">?</p>
+        <div id="opponentNumberContainer" 
+             class="cursor-pointer hover:bg-white/5 rounded-lg p-2 transition-all"
+             title="Click and hold to reveal">
+          <p class="text-3xl font-bold text-pink-400" id="opponentNumber">?</p>
+          <p class="text-xs text-gray-500 mt-1" id="revealHint">👁️ Click to peek</p>
+        </div>
         <p class="text-sm text-gray-400 mt-1">Steps: <span id="opponentSteps">0</span></p>
       </div>
     </div>
