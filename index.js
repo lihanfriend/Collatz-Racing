@@ -178,6 +178,66 @@ let lobbyListUnsubscribe = null;
 // ==================== DOM ====================
 const $ = id => document.getElementById(id);
 
+// ==================== OPPONENT NUMBER REVEAL ====================
+let revealTimeout = null;
+let isRevealing = false;
+
+function setupOpponentReveal() {
+    const container = $('opponentNumberContainer');
+    const numberElement = $('opponentNumber');
+    const hintElement = $('revealHint');
+    let actualNumber = '?';
+    let cooldownTimeout = null;
+    let isOnCooldown = false;
+    
+    const revealNumber = () => {
+        if (isRevealing || isOnCooldown) return; // Prevent clicks during reveal or cooldown
+        
+        isRevealing = true;
+        numberElement.textContent = actualNumber;
+        hintElement.textContent = '👁️ Revealed (3s)';
+        hintElement.className = 'text-xs text-green-400 mt-1';
+        
+        revealTimeout = setTimeout(() => {
+            numberElement.textContent = '?';
+            isRevealing = false;
+            
+            // Start cooldown
+            isOnCooldown = true;
+            let cooldownLeft = 5;
+            hintElement.textContent = `⏳ Cooldown (${cooldownLeft}s)`;
+            hintElement.className = 'text-xs text-yellow-400 mt-1';
+            
+            const cooldownInterval = setInterval(() => {
+                cooldownLeft--;
+                if (cooldownLeft > 0) {
+                    hintElement.textContent = `⏳ Cooldown (${cooldownLeft}s)`;
+                } else {
+                    clearInterval(cooldownInterval);
+                    isOnCooldown = false;
+                    hintElement.textContent = '👁️ Click to peek';
+                    hintElement.className = 'text-xs text-gray-500 mt-1';
+                }
+            }, 1000);
+        }, 3000);
+    };
+    
+    // Single click to reveal
+    container.onclick = revealNumber;
+    container.ontouchend = (e) => {
+        e.preventDefault();
+        revealNumber();
+    };
+    
+    // Store the actual number update function
+    window.updateOpponentNumber = (num) => {
+        actualNumber = num;
+        if (!isRevealing) {
+            numberElement.textContent = '?';
+        }
+    };
+}
+
 // ==================== COLLATZ ====================
 function collatzStep(n) { return n % 2 === 0 ? n / 2 : 3 * n + 1; }
 
@@ -658,6 +718,7 @@ $('createDuelBtn').onclick = async () => {
     duelRef = ref(db, `duels/${duelID}`);
     await set(duelRef, {
         startNumber, status: 'pending', rated: isRatedGame,
+        startTime: null,
         player1: { uid: currentUser.uid, displayName: currentUser.displayName || 'Anonymous',
             email: currentUser.email || 'no-email@example.com', currentNumber: startNumber, steps: 0, finished: false }
     });
@@ -758,12 +819,22 @@ function listenToDuel() {
             clearCreateCooldown();
             if (duelRef) onDisconnect(duelRef).cancel();
             await setupDisconnectForfeit();
-            await startGame();
+            
+            // Set synchronized start time if not already set
+            if (!data.startTime) {
+                const syncStartTime = Date.now() + 4000; // Start in 4 seconds
+                await update(duelRef, { startTime: syncStartTime });
+                await startGame(syncStartTime);
+            } else {
+                await startGame(data.startTime);
+            }
         }
         
         const opponentKey = (data.player1 && data.player1.uid === currentUser?.uid) ? 'player2' : 'player1';
         if (data[opponentKey]) {
-            $('opponentNumber').textContent = data[opponentKey].currentNumber;
+            if (window.updateOpponentNumber) {
+                window.updateOpponentNumber(data[opponentKey].currentNumber);
+            }
             $('opponentSteps').textContent = data[opponentKey].steps;
         }
         
@@ -895,7 +966,7 @@ function clearCreateCooldown() {
 }
 
 // ==================== GAME ====================
-async function startGame() {
+async function startGame(syncStartTime) {
     if (currentUser && isRatedGame) {
         const snap = await get(ref(db, `users/${currentUser.uid}`));
         if (snap.exists()) preGameRating = snap.val().rating;
@@ -907,6 +978,7 @@ async function startGame() {
     
     $('lobbyScreen').classList.add('hidden'); 
     $('gameScreen').classList.remove('hidden');
+    setupOpponentReveal();
     
     const badge = $('gameModeBadge');
     if (isRatedGame) {
@@ -921,7 +993,7 @@ async function startGame() {
     $('submitBtn').disabled = true; 
     $('feedback').textContent = '';
     $('yourSteps').textContent = '0'; 
-    $('opponentNumber').textContent = startNumber; 
+    $('opponentNumber').textContent = '?'; 
     $('opponentSteps').textContent = '0';
     $('gameTimer').textContent = '0.0s';
     
@@ -934,16 +1006,28 @@ async function startGame() {
     timerInterval = null;
     startTime = 0;
     
-    // Countdown
-    for (let i = 3; i > 0; i--) {
-        $('yourNumber').textContent = i; 
-        $('yourNumber').className = 'text-6xl font-bold text-yellow-400 animate-pulse';
-        await new Promise(r => setTimeout(r, 1000));
+    // Calculate time until synchronized start
+    const now = Date.now();
+    const timeUntilStart = syncStartTime - now;
+    
+    if (timeUntilStart > 100) {
+        // Show countdown based on synchronized time
+        const countdownSeconds = Math.ceil(timeUntilStart / 1000);
+        for (let i = Math.min(countdownSeconds, 3); i > 0; i--) {
+            $('yourNumber').textContent = i; 
+            $('yourNumber').className = 'text-6xl font-bold text-yellow-400 animate-pulse';
+            await new Promise(r => setTimeout(r, 1000));
+        }
     }
     
     $('yourNumber').textContent = 'GO!'; 
     $('yourNumber').className = 'text-6xl font-bold text-green-400';
-    await new Promise(r => setTimeout(r, 500));
+    
+    // Wait until exact start time
+    const waitTime = syncStartTime - Date.now();
+    if (waitTime > 0) {
+        await new Promise(r => setTimeout(r, waitTime));
+    }
     
     $('yourNumber').className = 'text-3xl font-bold text-yellow-400';
     $('yourNumber').textContent = currentNumber; 
@@ -953,8 +1037,8 @@ async function startGame() {
     $('answerInput').disabled = false; 
     $('submitBtn').disabled = false;
     
-    // NOW start the timer - after countdown is complete
-    startTime = Date.now();
+    // NOW start the timer - synchronized for both players
+    startTime = syncStartTime;
     timerInterval = setInterval(() => { 
         const elapsed = (Date.now() - startTime) / 1000;
         $('gameTimer').textContent = elapsed.toFixed(1) + 's'; 
