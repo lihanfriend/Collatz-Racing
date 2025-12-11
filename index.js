@@ -578,15 +578,23 @@ function displayLobbyList(duels) {
         const isMyDuel = currentUser && duel.code === duelID;
         const bgColor = isMyDuel ? 'bg-blue-500/20 border border-blue-500/50' : 'bg-white/5';
         
-        // Only show starting number if it's your duel or if you're in the game
+        // Only show starting number if it's your duel
         const showStartNumber = isMyDuel;
         
+        // Can join if: pending, not my duel, and not already in a game
+        const canJoin = duel.status === 'pending' && !isMyDuel && !gameStarted;
+        const cursorClass = canJoin ? 'cursor-pointer hover:bg-white/10' : '';
+        
         return `
-            <div class="${bgColor} rounded-lg p-3">
+            <div class="${bgColor} ${cursorClass} rounded-lg p-3 transition-all" 
+                 data-duel-code="${duel.code}" 
+                 data-can-join="${canJoin}"
+                 onclick="handleDuelClick('${duel.code}', ${canJoin})">
                 <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center gap-2">
                         <span class="font-mono font-bold text-white">${duel.code}</span>
                         <span class="${statusColor} text-xs">${statusText}</span>
+                        ${canJoin ? '<span class="text-xs text-blue-400">← Click to join</span>' : ''}
                     </div>
                     <span class="text-xs text-gray-400" title="${gameModeText}">${gameMode}</span>
                 </div>
@@ -596,6 +604,21 @@ function displayLobbyList(duels) {
         `;
     }).join('');
 }
+
+// Add this new function right after displayLobbyList
+window.handleDuelClick = async function(code, canJoin) {
+    if (!canJoin || !currentUser) return;
+    
+    // Auto-fill the code and trigger join
+    $('duelCodeInput').value = code;
+    
+    // Confirm before joining
+    const confirmed = confirm(`Join duel ${code}?`);
+    if (confirmed) {
+        // Trigger the join button click
+        $('joinDuelBtn').click();
+    }
+};
 // ==================== DUEL MANAGEMENT ====================
 $('duelCodeInput').oninput = (e) => {
     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -608,6 +631,28 @@ $('ratedToggle').onchange = (e) => {
 $('createDuelBtn').onclick = async () => {
     if (!currentUser) return alert("Please sign in first.");
     if (createCooldown) return alert("Please wait before creating another duel.");
+    
+    // Delete any existing pending duels created by this user
+    try {
+        const duelsRef = ref(db, 'duels');
+        const snapshot = await get(duelsRef);
+        if (snapshot.exists()) {
+            const deletionPromises = [];
+            snapshot.forEach(child => {
+                const data = child.val();
+                const code = child.key;
+                // Delete if it's pending and created by current user
+                if (data && data.status === 'pending' && 
+                    data.player1 && data.player1.uid === currentUser.uid) {
+                    deletionPromises.push(remove(ref(db, `duels/${code}`)));
+                }
+            });
+            await Promise.all(deletionPromises);
+        }
+    } catch (error) {
+        console.error('Error cleaning up old duels:', error);
+    }
+    
     startNumber = generateStartingNumber();
     duelID = await generateShortCode();
     duelRef = ref(db, `duels/${duelID}`);
@@ -621,6 +666,16 @@ $('createDuelBtn').onclick = async () => {
     
     const gameMode = isRatedGame ? 'Rated' : 'Casual';
     $('lobbyStatus').textContent = `${gameMode} duel created! Code: ${duelID}. Waiting for opponent...`;
+    
+    // Automatically show the Active Duels list
+    const container = $('lobbyListContainer');
+    const btn = $('toggleLobbyListBtn');
+    if (container.classList.contains('hidden')) {
+        container.classList.remove('hidden');
+        btn.textContent = '🎮 Hide Active Duels';
+        startLobbyListListener();
+    }
+    
     startCreateCooldown();
     listenToDuel();
 };
