@@ -565,15 +565,18 @@ function displayLobbyList(duels) {
     
     lobbyList.innerHTML = duels.map(duel => {
         const statusColor = duel.status === 'pending' ? 'text-yellow-400' : 'text-green-400';
-        const statusText = duel.status === 'pending' ? '⏳ Waiting' : '⚔️ In Progress';
+        const statusText = duel.status === 'pending' ? '⏳ Waiting for opponent' : '⚔️ In Progress';
         const gameMode = duel.rated ? '⭐' : '🎮';
         const gameModeText = duel.rated ? 'Rated' : 'Casual';
         const players = duel.player2 
             ? `${duel.player1} vs ${duel.player2}`
-            : `${duel.player1} (waiting)`;
+            : `${duel.player1} (waiting for opponent)`;
         
         const isMyDuel = currentUser && duel.code === duelID;
         const bgColor = isMyDuel ? 'bg-blue-500/20 border border-blue-500/50' : 'bg-white/5';
+        
+        // Only show starting number if it's your duel or if you're in the game
+        const showStartNumber = isMyDuel;
         
         return `
             <div class="${bgColor} rounded-lg p-3">
@@ -585,7 +588,7 @@ function displayLobbyList(duels) {
                     <span class="text-xs text-gray-400" title="${gameModeText}">${gameMode}</span>
                 </div>
                 <div class="text-sm text-gray-300">${players}</div>
-                <div class="text-xs text-gray-400 mt-1">Starting number: ${duel.startNumber}</div>
+                ${showStartNumber ? `<div class="text-xs text-gray-400 mt-1">Starting number: ${duel.startNumber}</div>` : ''}
             </div>
         `;
     }).join('');
