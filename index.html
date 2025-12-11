@@ -61,12 +61,32 @@
       </div>
     </div>
     
-    <!-- Leaderboard Toggle -->
-    <div class="text-center">
+    <!-- Toggle Buttons -->
+    <div class="flex gap-3 justify-center">
       <button id="toggleLeaderboardBtn" 
         class="bg-white/5 hover:bg-white/10 text-white font-semibold py-2 px-6 rounded-lg transition-all border border-white/20">
         🏆 Show Leaderboard
       </button>
+      <button id="toggleLobbyListBtn" 
+        class="bg-white/5 hover:bg-white/10 text-white font-semibold py-2 px-6 rounded-lg transition-all border border-white/20">
+        🎮 Show Active Duels
+      </button>
+    </div>
+    
+    <!-- Leaderboard Container -->
+    <div id="leaderboardContainer" class="hidden bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 fade-in">
+      <h3 class="text-xl font-bold mb-3 text-center text-blue-400">🏆 Top Players</h3>
+      <div id="leaderboard" class="space-y-2 max-h-64 overflow-y-auto">
+        <p class="text-gray-400 text-sm text-center">Loading leaderboard...</p>
+      </div>
+    </div>
+    
+    <!-- Active Duels Container -->
+    <div id="lobbyListContainer" class="hidden bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 fade-in">
+      <h3 class="text-xl font-bold mb-3 text-center text-green-400">🎮 Active Duels</h3>
+      <div id="lobbyList" class="space-y-2 max-h-64 overflow-y-auto">
+        <p class="text-gray-400 text-sm text-center">Loading active duels...</p>
+      </div>
     </div>
     
     <!-- Leaderboard Container -->
