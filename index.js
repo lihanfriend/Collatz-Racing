@@ -545,6 +545,9 @@ function startLobbyListListener() {
         }
         
         displayLobbyList(duels);
+    }, (error) => {
+        console.error('Error listening to duels:', error);
+        $('lobbyList').innerHTML = '<p class="text-red-400 text-sm text-center">Error loading active duels</p>';
     });
 }
 
@@ -552,7 +555,7 @@ function displayLobbyList(duels) {
     const lobbyList = $('lobbyList');
     
     if (duels.length === 0) {
-        lobbyList.innerHTML = '<p class="text-gray-400 text-sm text-center">No active duels right now</p>';
+        lobbyList.innerHTML = '<p class="text-gray-400 text-sm text-center">No active duels right now. Create one by pressing "Create Duel" below!</p>';
         return;
     }
     
