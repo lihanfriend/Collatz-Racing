@@ -677,17 +677,24 @@ function displayLobbyList(duels) {
         const canJoin = duel.status === 'pending' && !isMyDuel && !gameStarted && currentUser;
         const cursorClass = canJoin ? 'cursor-pointer hover:bg-white/10' : '';
         
+        const clickHandler = canJoin 
+            ? `onclick="handleDuelClick('${duel.code}')"` 
+            : isMyDuel && duel.status === 'pending' 
+                ? `onclick="cancelMyDuel('${duel.code}')" style="cursor: pointer;"` 
+                : '';
+        
         return `
             <div class="${bgColor} ${cursorClass} rounded-lg p-3 transition-all" 
                  data-duel-code="${duel.code}" 
                  data-can-join="${canJoin}"
-                 ${canJoin ? `onclick="handleDuelClick('${duel.code}')"` : ''}>
+                 ${clickHandler}>
                 <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center gap-2">
                         <span class="font-mono font-bold text-white">${duel.code}</span>
                         <span class="${statusColor} text-xs">${statusText}</span>
                         ${canJoin ? '<span class="text-xs text-blue-400">← Click to join</span>' : ''}
-                        ${isMyDuel ? '<span class="text-xs text-cyan-400">← Your duel</span>' : ''}
+                        ${isMyDuel && duel.status === 'pending' ? '<span class="text-xs text-red-400">← Your duel (click to cancel)</span>' : ''}
+                        ${isMyDuel && duel.status === 'active' ? '<span class="text-xs text-cyan-400">← Your duel</span>' : ''}
                     </div>
                     <div class="flex items-center gap-1">
                         <span class="text-xs text-gray-400" title="${gameModeText}">${gameMode}</span>
@@ -712,6 +719,24 @@ window.handleDuelClick = function(code) {
     const confirmed = confirm('Join duel ' + code + '?');
     if (confirmed) {
         joinBtn.click();
+    }
+};
+
+window.cancelMyDuel = async function(code) {
+    if (!currentUser) return;
+    
+    const confirmed = confirm('Cancel duel ' + code + '?');
+    if (confirmed) {
+        try {
+            await remove(ref(db, 'duels/' + code));
+            duelID = null;
+            duelRef = null;
+            document.getElementById('lobbyStatus').textContent = 'Duel cancelled.';
+            clearCreateCooldown();
+        } catch (error) {
+            console.error('Error cancelling duel:', error);
+            alert('Failed to cancel duel.');
+        }
     }
 };
 // ==================== DUEL MANAGEMENT ====================
