@@ -636,20 +636,23 @@ function displayLobbyList(duels) {
         const statusText = duel.status === 'pending' ? '⏳ Waiting for opponent' : '⚔️ In Progress';
         const gameMode = duel.rated ? '⭐' : '🎮';
         const gameModeText = duel.rated ? 'Rated' : 'Casual';
-        const privacyIcon = duel.public ? '' : '🔒';
-        const privacyText = duel.public ? 'Public' : 'Private';
         const players = duel.player2 
             ? `${duel.player1} vs ${duel.player2}`
             : `${duel.player1} (waiting for opponent)`;
         
-        const isMyDuel = currentUser && duel.code === duelID;
+        // Check if this is the current user's duel
+        const isMyDuel = currentUser && (
+            (duel.status === 'pending' && duel.code === duelID) || 
+            (duel.status === 'active' && duel.code === duelID)
+        );
+        
         const bgColor = isMyDuel ? 'bg-blue-500/20 border border-blue-500/50' : 'bg-white/5';
         
         // Only show starting number if the game is active (both players joined)
         const showStartNumber = duel.status === 'active' && duel.player2;
         
         // Can join if: pending, not my duel, and not already in a game
-        const canJoin = duel.status === 'pending' && !isMyDuel && !gameStarted;
+        const canJoin = duel.status === 'pending' && !isMyDuel && !gameStarted && currentUser;
         const cursorClass = canJoin ? 'cursor-pointer hover:bg-white/10' : '';
         
         return `
@@ -662,10 +665,10 @@ function displayLobbyList(duels) {
                         <span class="font-mono font-bold text-white">${duel.code}</span>
                         <span class="${statusColor} text-xs">${statusText}</span>
                         ${canJoin ? '<span class="text-xs text-blue-400">← Click to join</span>' : ''}
+                        ${isMyDuel ? '<span class="text-xs text-cyan-400">← Your duel</span>' : ''}
                     </div>
                     <div class="flex items-center gap-1">
                         <span class="text-xs text-gray-400" title="${gameModeText}">${gameMode}</span>
-                        ${privacyIcon ? `<span class="text-xs text-gray-400" title="${privacyText}">${privacyIcon}</span>` : ''}
                     </div>
                 </div>
                 <div class="text-sm text-gray-300">${players}</div>
@@ -1239,17 +1242,27 @@ $('returnLobbyBtn').onclick = async () => {
         }
     }
     
+    // Reset game state BEFORE updating UI
+    duelID = null; 
+    duelRef = null; 
+    gameStarted = false; 
+    ratingUpdated = false; 
+    gameFinishedNormally = false;
+    processingGameEnd = false;
+    
     if (currentUser) {
         await displayUserRating(currentUser.uid);
         // Only reload leaderboard if it's currently visible
         if (!$('leaderboardContainer').classList.contains('hidden')) {
             await loadLeaderboard();
         }
+        // Refresh lobby list if visible
+        if (!$('lobbyListContainer').classList.contains('hidden')) {
+            // The listener should still be active and will update automatically
+            // But we can ensure it's running
+            if (!lobbyListUnsubscribe) {
+                startLobbyListListener();
+            }
+        }
     }
-    
-    duelID = null; 
-    duelRef = null; 
-    gameStarted = false; 
-    ratingUpdated = false; 
-    gameFinishedNormally = false;
 };
